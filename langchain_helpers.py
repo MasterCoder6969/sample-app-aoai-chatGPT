@@ -202,7 +202,7 @@ class GetDocSearchResults_Tool(BaseTool):
 
 blob_sas_token=""
 index_format = "{:" + app_settings.custom.index_format + "}"
-indexes=[app_settings.custom.index_root + index_format.format(i) for i in range(1,app_settings.custom.index_number)]
+indexes=[app_settings.custom.index_root + index_format.format(i) for i in range(1,app_settings.custom.index_number + 1)]
 
 #se establecen las herramientas que el agente utilizará
 tools = [GetDocSearchResults_Tool(indexes=indexes, k=app_settings.datasource.top_k, score_th=app_settings.custom.absolute_threshold, rel_th=app_settings.custom.relative_threshold, sas_token=blob_sas_token)] #tengo mis dudas del uso del sas!
@@ -216,8 +216,7 @@ token_provider = get_bearer_token_provider(
     DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default"
 )
 '''
-
-gpt_deployment_name="model-gpt4"
+gpt_deployment_name=app_settings.azure_openai.model
 
 COMPLETION_TOKENS = 1500
 llm = AzureChatOpenAI(deployment_name=gpt_deployment_name, 
