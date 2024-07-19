@@ -79,11 +79,11 @@ def get_search_results(query: str, indexes: list,
         search_payload = {
             "search": "*",
             "select": "filepath, id, contentVector, title, name, content", #se realiza así la búsqueda?
-            "queryType": "semantic",
+            "queryType": "vector",
             "vectorQueries": [{"text": query, "fields": "contentVector", "kind": "text", "k": k}],
-            "semanticConfiguration": "my-semantic-config",
-            "captions": "extractive",
-            "answers": "extractive",
+            #"semanticConfiguration": "my-semantic-config",
+            #"captions": "extractive",
+            #"answers": "extractive",
             "count":"true",
             "top": k    
         }
