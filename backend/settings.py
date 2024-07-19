@@ -239,6 +239,19 @@ class DatasourcePayloadConstructor(BaseModel, ABC):
     ):
         pass
 
+class _CustomSearchSettings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_prefix="SEARCH__CUSTOM_",
+        env_file=DOTENV_PATH,
+        extra="ignore",
+        env_ignore_empty=True
+    )
+    absolute_threshold: Optional[float] = Field(default = 0.78, excluded=True)
+    relative_threshold: Optional[float] = Field(default = 0.15, excluded=True)
+    
+    index_number: Optional[int] = Field(default = 1, exclude=True)
+    index_root: Optional[str] = Field(default = None, excluded=True)
+    index_format: Optional[str] = Field(default = "", excluded=True)
 
 class _AzureSearchSettings(BaseSettings, DatasourcePayloadConstructor):
     model_config = SettingsConfigDict(
@@ -681,6 +694,7 @@ class _AppSettings(BaseModel):
     ui: Optional[_UiSettings] = _UiSettings()
     history: Optional[_HistorySettings] = _HistorySettings()
     feedback_message : str = ""
+    custom: Optional[_CustomSearchSettings] = _CustomSearchSettings()
     
     # Constructed properties
     chat_history: Optional[_ChatHistorySettings] = None

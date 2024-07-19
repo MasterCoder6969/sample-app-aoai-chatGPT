@@ -76,6 +76,7 @@ const Chat = () => {
   const [errorMsg, setErrorMsg] = useState<ErrorMessage | null>()
   const [isFeedbackOpen,setIsFeedbackOpen] = useState<boolean>(false)
   const [currentFeedback, setCurrentFeedback] = useState<string>("")
+  const [isDropDownCompleted, setIsDropDownCompleted] = useState<boolean>(false)
   const [isFeedbackSent,setIsFeedbackSent] = useState<boolean>(false)
   const [code, setCode] = useState<string>("")
   const [hasCode, setHasCode] = useState<boolean>(false)
@@ -858,7 +859,6 @@ const Chat = () => {
                   <div ref={chatMessageStreamEnd} />
                 </div>
             )}
-
             <Stack className={styles.chatInput}>
               {isFeedbackSent ?
               (<div className={styles.chatEmptyStateSubtitle}>Gracias por su feedback</div>)

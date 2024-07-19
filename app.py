@@ -38,6 +38,9 @@ from backend.utils import (
     convert_to_pf_format,
     format_pf_non_streaming_response,
 )
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_helpers import llm, roles, tools,stream_completions
+from langchain.agents import create_tool_calling_agent, AgentExecutor
 
 bp = Blueprint("routes", __name__, static_folder="static", template_folder="static")
 
@@ -319,17 +322,35 @@ async def send_chat_request(request_body, request_headers):
     filtered_messages = []
     messages = request_body.get("messages", [])
     for message in messages:
-        if message.get("role") != 'tool':
+        if message.get("role") != "tool" and message.get("role"):
             filtered_messages.append(message)
             
     request_body['messages'] = filtered_messages
     model_args = prepare_model_args(request_body, request_headers)
+    print(model_args)
 
     try:
+        
+        prompt = ChatPromptTemplate.from_messages(
+            [("system", app_settings.azure_openai.system_message)] + 
+            [(roles[message.get("role")],message.get("content")) for message in filtered_messages[:-1]] +
+            [("human", "{input}")]#, MessagesPlaceholder(variable_name="agent_scratchpad", optional=True)]
+        )
+        #agent = create_tool_calling_agent(llm, tools, prompt)
+        #agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=False)
+        response = stream_completions(llm, prompt, filtered_messages[-1].get("content"))
+
+        apim_request_id = "" 
+        #-------------------------------------------------------------
+        """
         azure_openai_client = init_openai_client()
         raw_response = await azure_openai_client.chat.completions.with_raw_response.create(**model_args)
         response = raw_response.parse()
-        apim_request_id = raw_response.headers.get("apim-request-id") 
+        async for chunk in response:
+            delta = chunk.choices[0].delta
+            if hasattr(delta,"context"):
+                print(delta)
+        apim_request_id = raw_response.headers.get("apim-request-id")"""
     except Exception as e:
         logging.exception("Exception in send_chat_request")
         raise e
@@ -360,6 +381,7 @@ async def stream_chat_request(request_body, request_headers):
     async def generate():
         async for completionChunk in response:
             yield format_stream_response(completionChunk, history_metadata, apim_request_id)
+        #LOG HERE
 
     return generate()
 
@@ -409,14 +431,14 @@ async def update_feedback():
     try:
         messages = request_json.get("messages",[])
         p_messages = [m for m in messages if m[0]!="{"]
-        value_dict = {"Code":request_json.get("Code",""),"Feedback":request_json.get("message",[]),"Messages":str(p_messages) , "TimeElapsed": time.time()-session.get("startTime", None)}
-        data_to_append = list_to_csv_string(value_dict.values()) + "\n"
+        value_dict = {"Code":request_json.get("Code",""),"Feedback":request_json.get("message",""),"Messages":str(p_messages) , "TimeElapsed": time.time()-session.get("startTime", None)}
+        data_to_append = "\n" + list_to_csv_string(value_dict.values())
     
         service = BlobServiceClient.from_connection_string(connection_string)
         with service.get_blob_client(container_name, blob_name) as blob_client:
             if not blob_client.exists():
                 blob_client.create_append_blob()
-                blob_client.append_block(",".join(value_dict.keys()) + "\n")
+                blob_client.append_block(",".join(value_dict.keys()))
             blob_client.append_block(data_to_append, length=len(data_to_append))
     except Exception as e:
         print("Error: " + str(e))
