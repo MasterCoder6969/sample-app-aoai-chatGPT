@@ -1,5 +1,3 @@
-import os
-import random
 import asyncio
 import json
 import requests
@@ -28,7 +26,6 @@ from langchain_core.documents import Document
 #from common.utils import  GetDocSearchResults_Tool
 #from common.prompts import AGENT_DOCSEARCH_PROMPT
 
-from IPython.display import Markdown, HTML, display  
 from collections import OrderedDict
 
 from backend.settings import (
