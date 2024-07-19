@@ -330,27 +330,27 @@ async def send_chat_request(request_body, request_headers):
     print(model_args)
 
     try:
-        
-        prompt = ChatPromptTemplate.from_messages(
-            [("system", app_settings.azure_openai.system_message)] + 
-            [(roles[message.get("role")],message.get("content")) for message in filtered_messages[:-1]] +
-            [("human", "{input}")]#, MessagesPlaceholder(variable_name="agent_scratchpad", optional=True)]
-        )
-        #agent = create_tool_calling_agent(llm, tools, prompt)
-        #agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=False)
-        response = stream_completions(llm, prompt, filtered_messages[-1].get("content"))
+        if app_settings.custom.use_langchain:
+            prompt = ChatPromptTemplate.from_messages(
+                [("system", app_settings.azure_openai.system_message)] + 
+                [(roles[message.get("role")],message.get("content")) for message in filtered_messages[:-1]] +
+                [("human", "{input}")]#, MessagesPlaceholder(variable_name="agent_scratchpad", optional=True)]
+            )
+            #agent = create_tool_calling_agent(llm, tools, prompt)
+            #agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=False)
+            response = stream_completions(llm, prompt, filtered_messages[-1].get("content"))
 
-        apim_request_id = "" 
+            apim_request_id = "" 
         #-------------------------------------------------------------
-        """
-        azure_openai_client = init_openai_client()
-        raw_response = await azure_openai_client.chat.completions.with_raw_response.create(**model_args)
-        response = raw_response.parse()
-        async for chunk in response:
-            delta = chunk.choices[0].delta
-            if hasattr(delta,"context"):
-                print(delta)
-        apim_request_id = raw_response.headers.get("apim-request-id")"""
+        else:
+            azure_openai_client = init_openai_client()
+            raw_response = await azure_openai_client.chat.completions.with_raw_response.create(**model_args)
+            response = raw_response.parse()
+            async for chunk in response:
+                delta = chunk.choices[0].delta
+                if hasattr(delta,"context"):
+                    print(delta)
+            apim_request_id = raw_response.headers.get("apim-request-id")
     except Exception as e:
         logging.exception("Exception in send_chat_request")
         raise e

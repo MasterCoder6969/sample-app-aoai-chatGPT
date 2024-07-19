@@ -253,6 +253,8 @@ class _CustomSearchSettings(BaseSettings):
     index_root: Optional[str] = Field(default = None, excluded=True)
     index_format: Optional[str] = Field(default = "", excluded=True)
 
+    use_langchain: Optional[bool] = Field(default = True, exclude = True)
+
 class _AzureSearchSettings(BaseSettings, DatasourcePayloadConstructor):
     model_config = SettingsConfigDict(
         env_prefix="AZURE_SEARCH_",
