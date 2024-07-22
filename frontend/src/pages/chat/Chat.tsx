@@ -15,6 +15,7 @@ import { XSSAllowTags } from '../../constants/xssAllowTags'
 
 import {
   UpdateFeedback,
+  StoreCode,
   ChatMessage,
   ConversationRequest,
   conversationApi,
@@ -69,6 +70,7 @@ const Chat = () => {
   const abortFuncs = useRef([] as AbortController[])
   const [showAuthMessage, setShowAuthMessage] = useState<boolean | undefined>()
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [oldMessages, setOldMessages] = useState<ChatMessage[]>([])
   const [execResults, setExecResults] = useState<ExecResults[]>([])
   const [processMessages, setProcessMessages] = useState<messageStatus>(messageStatus.NotRunning)
   const [clearingChat, setClearingChat] = useState<boolean>(false)
@@ -98,7 +100,6 @@ const Chat = () => {
 
   const [ASSISTANT, TOOL, ERROR] = ['assistant', 'tool', 'error']
   const NO_CONTENT_ERROR = 'No content in messages object.'
-
   useEffect(() => {
     if (
       appStateContext?.state.isCosmosDBAvailable?.status !== CosmosDBStatus.Working &&
@@ -173,7 +174,7 @@ const Chat = () => {
     } else {
       isEmpty(toolMessage)
         ? setMessages([...messages, assistantMessage])
-        : setMessages([...messages, toolMessage, assistantMessage])
+        : setMessages([...messages,toolMessage, assistantMessage])
     }
   }
 
@@ -213,6 +214,7 @@ const Chat = () => {
 
     appStateContext?.dispatch({ type: 'UPDATE_CURRENT_CHAT', payload: conversation })
     setMessages(conversation.messages)
+    updateFeedback("",code)
 
     const request: ConversationRequest = {
       messages: [...conversation.messages.filter(answer => answer.role !== ERROR)]
@@ -296,6 +298,7 @@ const Chat = () => {
       setShowLoadingMessage(false)
       abortFuncs.current = abortFuncs.current.filter(a => a !== abortController)
       setProcessMessages(messageStatus.Done)
+      updateFeedback("", code)
     }
 
     return abortController.abort()
@@ -556,12 +559,14 @@ const Chat = () => {
         setActiveCitation(undefined)
         setIsCitationPanelOpen(false)
         setIsIntentsPanelOpen(false)
+        setOldMessages(oldMessages.concat(messages))
         setMessages([])
         setHasCode(false)
         setCode("")
         setIsFeedbackOpen(false)
         setCurrentFeedback("")
         setIsFeedbackSent(false)
+        setIsDropDownCompleted(false)
       }
     }
     setClearingChat(false)
@@ -623,6 +628,7 @@ const Chat = () => {
   }
 
   const newChat = () => {
+    setOldMessages(oldMessages.concat(messages))
     setProcessMessages(messageStatus.Processing)
     setMessages([])
     setIsCitationPanelOpen(false)
@@ -635,6 +641,8 @@ const Chat = () => {
     setIsFeedbackOpen(false)
     setCurrentFeedback("")
     setIsFeedbackSent(false)
+    setIsDropDownCompleted(false)
+    
   }
 
   const stopGenerating = () => {
@@ -801,7 +809,7 @@ const Chat = () => {
       ) : (
         <Stack horizontal className={styles.chatRoot}>
           <div className={styles.chatContainer}>
-            {!messages || messages.length < 1 ? (
+            {(oldMessages.length == 0 && messages.length ==  0) ? (
                 <Stack className={styles.chatEmptyState}>
                   <img src={ui?.chat_logo ? ui.chat_logo : Contoso} className={styles.chatIcon} aria-hidden="true" />
                   <h1 className={styles.chatEmptyStateTitle}>{ui?.chat_title}</h1>
@@ -809,7 +817,7 @@ const Chat = () => {
                 </Stack>
               ) : (
                 <div className={styles.chatMessageStream} style={{ marginBottom: isLoading ? '40px' : '0px' }} role="log">
-                  {messages.map((answer, index) => (
+                  {(oldMessages.concat(messages)).map((answer, index) => (
                     <>
                       {answer.role === 'user' ? (
                         <div className={styles.chatMessageUser} tabIndex={0}>
@@ -993,23 +1001,29 @@ const Chat = () => {
                   disabled={isLoading}
                   onSend={(code) => {
                     setCode(code)
+                    StoreCode(code)
                     setHasCode(true)
+                    setOldMessages([...oldMessages, { id: uuid(),
+                      role: 'assistant',
+                      content: `SESSION STARTED WITH CODE: ${code}`,
+                      date: new Date().toISOString()
+                    } as ChatMessage])
                   }}
                 />)
-                : isFeedbackOpen ?
+                : (isFeedbackOpen && !isDropDownCompleted) ?
                 (<DropDown categories={["","Respondió con información completa", "Respondió con información relevante, pero no completa.", "Respondió con información parcialmente relevante.",  "Respondió con información no relevante.", "Respondió con contenido inapropiado."]} setSelectedCategory={(feedback:string) => {
-                  setIsFeedbackSent(true)
-                  updateFeedback(feedback)
-                }}/>
-                  /*QuestionInput
+                  setCurrentFeedback(feedback)
+                  setIsDropDownCompleted(true)
+                }}/>) : isDropDownCompleted ?
+                <QuestionInput
                   clearOnSend
                   placeholder="Escriba aquí su feedback."
                   disabled={!isFeedbackOpen || isLoading}
                   onSend={(feedback,id) => {
                     setIsFeedbackSent(true)
-                    updateFeedback(feedback,id)
+                    updateFeedback(currentFeedback + "  |  "+feedback,id)
                   }}
-                />*/) 
+                /> 
                 :(<QuestionInput
                   clearOnSend
                   placeholder="Escriba aquí su consulta."

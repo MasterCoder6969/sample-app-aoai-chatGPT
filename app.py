@@ -327,7 +327,7 @@ async def send_chat_request(request_body, request_headers):
             
     request_body['messages'] = filtered_messages
     model_args = prepare_model_args(request_body, request_headers)
-    print(model_args)
+    #print(model_args)
 
     try:
         if app_settings.custom.use_langchain:
@@ -346,6 +346,8 @@ async def send_chat_request(request_body, request_headers):
             azure_openai_client = init_openai_client()
             raw_response = await azure_openai_client.chat.completions.with_raw_response.create(**model_args)
             response = raw_response.parse()
+            #async for chunk in response:
+            #    print(chunk)
             apim_request_id = raw_response.headers.get("apim-request-id")
     except Exception as e:
         logging.exception("Exception in send_chat_request")
@@ -370,22 +372,26 @@ async def complete_chat_request(request_body, request_headers):
         return format_non_streaming_response(response, history_metadata, apim_request_id)
 
 
-async def stream_chat_request(request_body, request_headers):
+async def stream_chat_request(request_body, request_headers, extra_vals = None):
     response, apim_request_id = await send_chat_request(request_body, request_headers)
     history_metadata = request_body.get("history_metadata", {})
     
-    async def generate():
+    async def generate(extra_vals=None):
+        chunk_list = []
+        #try:
         async for completionChunk in response:
+            chunk_list.append(completionChunk)
             yield format_stream_response(completionChunk, history_metadata, apim_request_id)
-        #LOG HERE
+        #finally:
+            #if extra_vals:
+            #    await update_feedback(extra_vals["Code"], "", [message["content"] for message in request_body.get("messages",[])] + ["".join(chunk.choices[0].delta.content for chunk in chunk_list)], time.time()-extra_vals["startTime"])
+    return generate(extra_vals)
 
-    return generate()
 
-
-async def conversation_internal(request_body, request_headers):
+async def conversation_internal(request_body, request_headers, extra_vals):
     try:
         if app_settings.azure_openai.stream:
-            result = await stream_chat_request(request_body, request_headers)
+            result = await stream_chat_request(request_body, request_headers, extra_vals)
             response = await make_response(format_as_ndjson(result))
             response.timeout = None
             response.mimetype = "application/json-lines"
@@ -408,8 +414,7 @@ def list_to_csv_string(data):
     writer.writerow(data)
     return output.getvalue().strip()
 
-@bp.route("/feedback",methods=["POST"])
-async def update_feedback():
+async def update_feedback(code, feedback, messages, time_elapsed):
     container_name = app_settings.history.container
     blob_name = app_settings.history.blob
     account_name = app_settings.history.blob_service
@@ -420,33 +425,48 @@ async def update_feedback():
         connection_string = f"DefaultEndpointsProtocol=https;AccountName={account_name};AccountKey={account_key}"
     elif mi_conn_str:
         connection_string = mi_conn_str
-    if not request.is_json:
-        return jsonify({"error": "request must be json"}), 415
-    request_json = await request.get_json()
     
     try:
-        messages = request_json.get("messages",[])
-        p_messages = [m for m in messages if m[0]!="{"]
-        value_dict = {"Code":request_json.get("Code",""),"Feedback":request_json.get("message",""),"Messages":str(p_messages) , "TimeElapsed": time.time()-session.get("startTime", None)}
+        p_messages = [m for m in messages if m and (m[0]!="{")]
+        value_dict = {"Code":code,"Feedback":feedback,"Messages":str(p_messages) , "TimeElapsed": time_elapsed}
         data_to_append = "\n" + list_to_csv_string(value_dict.values())
-    
         service = BlobServiceClient.from_connection_string(connection_string)
         with service.get_blob_client(container_name, blob_name) as blob_client:
             if not blob_client.exists():
                 blob_client.create_append_blob()
                 blob_client.append_block(",".join(value_dict.keys()))
             blob_client.append_block(data_to_append, length=len(data_to_append))
+
     except Exception as e:
         print("Error: " + str(e))
-    return jsonify({"message":"Successfully added feedback: " + request_json.get("message", [])}), 200
+
+@bp.route("/code", methods=["POST"])
+async def store_code():
+    if not request.is_json:
+        return jsonify({"error": "request must be json"}), 415
+    request_json = await request.get_json()
+    code = request_json.get("Code", "")
+    session["Code"] = code
+    return jsonify({"message":"Successfully stored code: " + code}), 200
+
+@bp.route("/feedback",methods=["POST"])
+async def update_feedback_aux():
+    if not request.is_json:
+        return jsonify({"error": "request must be json"}), 415
+    request_json = await request.get_json()
+    feedback = request_json.get("message","")
+    await update_feedback(request_json.get("Code",""), feedback, request_json.get("messages",[]), time.time()-session.get("startTime", None))
+    return jsonify({"message":"Successfully added feedback: " + feedback}), 200
+
 
 @bp.route("/conversation", methods=["POST"])
 async def conversation():
     if not request.is_json:
         return jsonify({"error": "request must be json"}), 415
     request_json = await request.get_json()
-
-    return await conversation_internal(request_json, request.headers)
+    extra_vals = {"Code": session.get("Code",""),
+                  "startTime": session.get("startTime", None)}
+    return await conversation_internal(request_json, request.headers, extra_vals)
 
 
 @bp.route("/frontend_settings", methods=["GET"])
@@ -510,7 +530,9 @@ async def add_conversation():
         request_body = await request.get_json()
         history_metadata["conversation_id"] = conversation_id
         request_body["history_metadata"] = history_metadata
-        return await conversation_internal(request_body, request.headers)
+        extra_vals = {"Code": session.get("Code",""),
+                      "startTime": session.get("startTime", None)}
+        return await conversation_internal(request_body, request.headers, extra_vals)
 
     except Exception as e:
         logging.exception("Exception in /history/generate")
