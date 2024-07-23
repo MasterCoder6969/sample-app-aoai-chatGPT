@@ -809,7 +809,7 @@ const Chat = () => {
       ) : (
         <Stack horizontal className={styles.chatRoot}>
           <div className={styles.chatContainer}>
-            {(oldMessages.length == 0 && messages.length ==  0) ? (
+          {(!messages || messages.length < 1) ? (
                 <Stack className={styles.chatEmptyState}>
                   <img src={ui?.chat_logo ? ui.chat_logo : Contoso} className={styles.chatIcon} aria-hidden="true" />
                   <h1 className={styles.chatEmptyStateTitle}>{ui?.chat_title}</h1>
@@ -828,8 +828,8 @@ const Chat = () => {
                           <Answer
                             answer={{
                               answer: answer.content,
-                              citations: parseCitationFromMessage(messages[index - 1]),
-                              plotly_data: parsePlotFromMessage(messages[index - 1]),
+                              citations: parseCitationFromMessage(messages[index - 1 - oldMessages.length]),
+                              plotly_data: parsePlotFromMessage(messages[index - 1 - oldMessages.length]),
                               message_id: answer.id,
                               feedback: answer.feedback,
                               exec_results: execResults
@@ -868,12 +868,11 @@ const Chat = () => {
                 </div>
             )}
             <Stack className={styles.chatInput}>
-              {isFeedbackSent ?
-              (<div className={styles.chatEmptyStateSubtitle}>Gracias por su feedback</div>)
-              :(<Stack horizontal className={styles.chatInput}>
+              <Stack horizontal className={styles.chatInput}>
                 {isLoading && (
                   <Stack
                     horizontal
+                    title="Detener la generación"
                     className={styles.stopGeneratingContainer}
                     role="button"
                     aria-label="Stop generating"
@@ -910,6 +909,7 @@ const Chat = () => {
                         iconProps={{ iconName: 'Add' }}
                         onClick={newChat}
                         disabled={disabledButton()}
+                        title="Empezar nueva consulta"
                         aria-label="start a new chat button"
                       />
                     )}
@@ -942,6 +942,7 @@ const Chat = () => {
                           ? clearChat
                           : newChat
                       }
+                      title="Empezar nueva consulta"
                       disabled={disabledButton()}
                       aria-label="clear chat button"
                     />
@@ -983,7 +984,8 @@ const Chat = () => {
                     className={
                       styles.feedbackIcon
                     }
-                    iconProps={{ iconName: 'Feedback' }}
+                    title="Dar feedback de su experiencia"
+                    iconProps={{ iconName: 'Feedback'}}
                     onClick={()=>setIsFeedbackOpen(!isFeedbackOpen)}
                     disabled={false}
                     aria-label="feedback button"
@@ -998,6 +1000,7 @@ const Chat = () => {
                 (<QuestionInput
                   clearOnSend
                   placeholder="Escriba aquí su código."
+                  buttonTitle='Confirmar código de consulta'
                   disabled={isLoading}
                   onSend={(code) => {
                     setCode(code)
@@ -1005,27 +1008,30 @@ const Chat = () => {
                     setHasCode(true)
                     setOldMessages([...oldMessages, { id: uuid(),
                       role: 'assistant',
-                      content: `SESSION STARTED WITH CODE: ${code}`,
+                      content: `SESSIÓN EMPEZADA CON CÓDIGO: ${code}`,
                       date: new Date().toISOString()
                     } as ChatMessage])
                   }}
                 />)
                 : (isFeedbackOpen && !isDropDownCompleted) ?
-                (<DropDown categories={["","Respondió con información completa", "Respondió con información relevante, pero no completa.", "Respondió con información parcialmente relevante.",  "Respondió con información no relevante.", "Respondió con contenido inapropiado."]} setSelectedCategory={(feedback:string) => {
+                (<DropDown categories={["","OK", "OK con matices", "KO", "No Aplica"]} setSelectedCategory={(feedback:string) => {
                   setCurrentFeedback(feedback)
                   setIsDropDownCompleted(true)
                 }}/>) : isDropDownCompleted ?
                 <QuestionInput
                   clearOnSend
+                  buttonTitle='Enviar feedback'
                   placeholder="Escriba aquí su feedback."
                   disabled={!isFeedbackOpen || isLoading}
                   onSend={(feedback,id) => {
                     setIsFeedbackSent(true)
                     updateFeedback(currentFeedback + "  |  "+feedback,id)
+                    newChat()
                   }}
                 /> 
                 :(<QuestionInput
                   clearOnSend
+                  buttonTitle='Enviar consulta'
                   placeholder="Escriba aquí su consulta."
                   disabled={isFeedbackOpen || isLoading}
                   onSend={(question, id) => {
@@ -1037,11 +1043,11 @@ const Chat = () => {
                     appStateContext?.state.currentChat?.id ? appStateContext?.state.currentChat?.id : undefined
                   }
                 />)}
-              </Stack>)}
+              </Stack>
             </Stack>
           </div>
           {/* Citation Panel */}
-          {!isFeedbackOpen && messages && messages.length > 0 && isCitationPanelOpen && activeCitation && (
+          {!isFeedbackOpen && messages && messages.length >0 && isCitationPanelOpen && activeCitation && (
             <Stack.Item className={styles.citationPanel} tabIndex={0} role="tabpanel" aria-label="Citations Panel">
               <Stack
                 aria-label="Citations Panel Header Container"
@@ -1050,9 +1056,10 @@ const Chat = () => {
                 horizontalAlign="space-between"
                 verticalAlign="center">
                 <span aria-label="Citations" className={styles.citationPanelHeader}>
-                  Citations
+                  Referencias
                 </span>
                 <IconButton
+                  title="Cerrar el panel de referencias"
                   iconProps={{ iconName: 'Cancel' }}
                   aria-label="Close citations panel"
                   onClick={() => setIsCitationPanelOpen(false)}

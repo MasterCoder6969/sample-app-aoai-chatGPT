@@ -27,6 +27,8 @@ from azure.storage.blob import BlobServiceClient
 from backend.auth.auth_utils import get_authenticated_user_details
 from backend.security.ms_defender_utils import get_msdefender_user_json
 from backend.history.cosmosdbservice import CosmosConversationClient
+from openai.types.chat import ChatCompletionChunk
+
 from backend.settings import (
     app_settings,
     MINIMUM_SUPPORTED_AZURE_OPENAI_PREVIEW_API_VERSION
@@ -39,7 +41,7 @@ from backend.utils import (
     format_pf_non_streaming_response,
 )
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_helpers import llm, roles, tools,stream_completions
+from langchain_helpers import chain, roles,stream_completions
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 
 bp = Blueprint("routes", __name__, static_folder="static", template_folder="static")
@@ -322,7 +324,7 @@ async def send_chat_request(request_body, request_headers):
     filtered_messages = []
     messages = request_body.get("messages", [])
     for message in messages:
-        if message.get("role") != "tool" and message.get("role"):
+        if message.get("role") != "tool":# and ((not app_settings.custom.use_langchain) or message.get("role")):
             filtered_messages.append(message)
             
     request_body['messages'] = filtered_messages
@@ -331,23 +333,21 @@ async def send_chat_request(request_body, request_headers):
 
     try:
         if app_settings.custom.use_langchain:
-            prompt = ChatPromptTemplate.from_messages(
-                [("system", app_settings.azure_openai.system_message)] + 
-                [(roles[message.get("role")],message.get("content")) for message in filtered_messages[:-1]] +
-                [("human", "{input}")]#, MessagesPlaceholder(variable_name="agent_scratchpad", optional=True)]
-            )
             #agent = create_tool_calling_agent(llm, tools, prompt)
             #agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=False)
-            response = stream_completions(llm, prompt, filtered_messages[-1].get("content"))
+            response = stream_completions(chain, filtered_messages[-1].get("content"))
 
             apim_request_id = "" 
         #-------------------------------------------------------------
         else:
             azure_openai_client = init_openai_client()
             raw_response = await azure_openai_client.chat.completions.with_raw_response.create(**model_args)
-            response = raw_response.parse()
-            #async for chunk in response:
-            #    print(chunk)
+            response_1 = raw_response.parse()
+            async def generator():
+                async for chunk in response_1:
+                    print(chunk)
+                    yield ChatCompletionChunk(id=chunk.id, choices=chunk.choices, created=chunk.created, model=chunk.model, object="chat.completion.chunk", system_fingerprint=chunk.system_fingerprint)
+            response = generator()
             apim_request_id = raw_response.headers.get("apim-request-id")
     except Exception as e:
         logging.exception("Exception in send_chat_request")
@@ -372,26 +372,26 @@ async def complete_chat_request(request_body, request_headers):
         return format_non_streaming_response(response, history_metadata, apim_request_id)
 
 
-async def stream_chat_request(request_body, request_headers, extra_vals = None):
+async def stream_chat_request(request_body, request_headers):
     response, apim_request_id = await send_chat_request(request_body, request_headers)
     history_metadata = request_body.get("history_metadata", {})
     
-    async def generate(extra_vals=None):
-        chunk_list = []
+    async def generate():
+        #chunk_list = []
         #try:
         async for completionChunk in response:
-            chunk_list.append(completionChunk)
+            #chunk_list.append(completionChunk)
             yield format_stream_response(completionChunk, history_metadata, apim_request_id)
         #finally:
             #if extra_vals:
             #    await update_feedback(extra_vals["Code"], "", [message["content"] for message in request_body.get("messages",[])] + ["".join(chunk.choices[0].delta.content for chunk in chunk_list)], time.time()-extra_vals["startTime"])
-    return generate(extra_vals)
+    return generate()
 
 
-async def conversation_internal(request_body, request_headers, extra_vals):
+async def conversation_internal(request_body, request_headers):
     try:
         if app_settings.azure_openai.stream:
-            result = await stream_chat_request(request_body, request_headers, extra_vals)
+            result = await stream_chat_request(request_body, request_headers)
             response = await make_response(format_as_ndjson(result))
             response.timeout = None
             response.mimetype = "application/json-lines"
@@ -464,9 +464,7 @@ async def conversation():
     if not request.is_json:
         return jsonify({"error": "request must be json"}), 415
     request_json = await request.get_json()
-    extra_vals = {"Code": session.get("Code",""),
-                  "startTime": session.get("startTime", None)}
-    return await conversation_internal(request_json, request.headers, extra_vals)
+    return await conversation_internal(request_json, request.headers)
 
 
 @bp.route("/frontend_settings", methods=["GET"])
@@ -530,9 +528,7 @@ async def add_conversation():
         request_body = await request.get_json()
         history_metadata["conversation_id"] = conversation_id
         request_body["history_metadata"] = history_metadata
-        extra_vals = {"Code": session.get("Code",""),
-                      "startTime": session.get("startTime", None)}
-        return await conversation_internal(request_body, request.headers, extra_vals)
+        return await conversation_internal(request_body, request.headers)
 
     except Exception as e:
         logging.exception("Exception in /history/generate")

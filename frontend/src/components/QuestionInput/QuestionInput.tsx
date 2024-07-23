@@ -12,9 +12,10 @@ interface Props {
   placeholder?: string
   clearOnSend?: boolean
   conversationId?: string
+  buttonTitle?: string
 }
 
-export const QuestionInput = ({ onSend, disabled, placeholder, clearOnSend, conversationId }: Props) => {
+export const QuestionInput = ({ onSend, disabled, placeholder, clearOnSend, conversationId, buttonTitle }: Props) => {
   const [question, setQuestion] = useState<string>('')
 
   const sendQuestion = () => {
@@ -63,6 +64,7 @@ export const QuestionInput = ({ onSend, disabled, placeholder, clearOnSend, conv
         role="button"
         tabIndex={0}
         aria-label="Ask question button"
+        title={buttonTitle}
         onClick={sendQuestion}
         onKeyDown={e => (e.key === 'Enter' || e.key === ' ' ? sendQuestion() : null)}>
         {sendQuestionDisabled ? (

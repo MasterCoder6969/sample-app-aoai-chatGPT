@@ -41,8 +41,6 @@ from collections import OrderedDict
 
 ## Credenciales
 #piecewise = False
-piecewise = True
-
 #AISEARCH
 search_api_version= app_settings.azure_openai.preview_api_version
 search_query_type = app_settings.datasource.query_type
@@ -58,7 +56,7 @@ openai_temperature = app_settings.azure_openai.temperature
 ## RAG MODEL - AGENT
 def get_search_results(query: str, indexes: list, 
                        k: int = 5,
-                       score_threshold: float = 0.8,
+                       score_threshold: float = 0.78,
                        rel_threshold: float = 0.15,
                        sas_token: str = "",
                        verbose: bool = False) -> List[dict]:
@@ -78,8 +76,8 @@ def get_search_results(query: str, indexes: list,
     for index in indexes:
         search_payload = {
             "search": "*",
-            "select": "filepath, id, contentVector, title, name, content", #se realiza así la búsqueda?
-            "queryType": "vector",
+            "select": "filepath, id, contentVector, title, name, content, url", #se realiza así la búsqueda?
+            #"queryType": "vector",
             "vectorQueries": [{"text": query, "fields": "contentVector", "kind": "text", "k": k}],
             #"semanticConfiguration": "my-semantic-config",
             #"captions": "extractive",
@@ -107,13 +105,16 @@ def get_search_results(query: str, indexes: list,
                                         "content": result['content'],
                                         "score": result['@search.score'],
                                         "index": index,
-                                        "location": result["filepath"]
+                                        "location": result["filepath"],
+                                        "url": result["url"]
                                     }
                 
 
     topk = k
     count = 0  # To keep track of the number of results added
     sorted_ids = sorted(content, key=lambda x: content[x]["score"], reverse=True)
+    if not sorted_ids:
+        return []
     max_score = content[sorted_ids[0]]["score"]
 
     for id in sorted_ids:
@@ -126,73 +127,31 @@ def get_search_results(query: str, indexes: list,
         for v in ordered_content.values():
             print(f"{v['title']}: {v['score']}")
 
-    return ordered_content
+    final_l = list(ordered_content.values())
+    return final_l
 
-class CustomAzureSearchRetriever(BaseRetriever):
-    
-    indexes: List
-    topK : int
-    score_threshold : float
-    sas_token : str = ""
-    rel_threshold : float
-    
-    
-    def _get_relevant_documents(
-        self, input: str, *, run_manager: CallbackManagerForRetrieverRun
-    ) -> List[Document]:
-        
-        ordered_results = get_search_results(input, self.indexes, k=self.topK, score_threshold=self.score_threshold, rel_threshold=self.rel_threshold, sas_token=self.sas_token)
-        
-        top_docs = []
-        for key,value in ordered_results.items():
-            
-            #esto creo que hay que eliminarlo
-            location = value["location"] if value["location"] is not None else ""
-            top_docs.append(Document(page_content=value["content"], metadata={"source": location, "score":value["score"]}))
-
-        return top_docs
-
-    
-class SearchInput(BaseModel):
-    query: str = Field(description="should be a search query")
-    return_direct: bool = Field(
-        description="Whether or the result of this should be returned directly to the user without you seeing what it is",
-        default=False,
-    )
-class GetDocSearchResults_Tool(BaseTool):
-    name = "docsearch"
-    description = "useful when the questions includes the term: docsearch"
-    args_schema: Type[BaseModel] = SearchInput
-    
+class GetDocSearchResults(BaseRetriever):
     indexes: List[str] = []
     k: int = 10
     score_th: float = 0.79
     sas_token: str = ""
     rel_th : float = 0.15
 
-    def _run(
-        self, query: str,  return_direct = False, run_manager: Optional[CallbackManagerForToolRun] = None
-    ) -> str:
+    def _get_relevant_documents(self, query, *, runManager = None):
+        return get_search_results(query = query, indexes = self.indexes, 
+                       k = self.k,
+                       score_threshold = self.score_th,
+                       rel_threshold = self.rel_th,
+                       sas_token = self.sas_token,
+                       verbose = False)
+    async def _aget_relevant_documents(self, query, *, runManager = None):
+        return get_search_results(query = query, indexes = self.indexes, 
+                       k = self.k,
+                       score_threshold = self.score_th,
+                       rel_threshold = self.rel_th,
+                       sas_token = self.sas_token,
+                       verbose = False)
 
-        retriever = CustomAzureSearchRetriever(indexes=self.indexes, topK=self.k, score_threshold=self.score_th, rel_threshold=self.rel_th,
-                                               sas_token=self.sas_token, callback_manager=self.callbacks)
-        results = retriever.invoke(input=query)
-        
-        return results
-
-    async def _arun(
-        self, query: str, return_direct = False, run_manager: Optional[AsyncCallbackManagerForToolRun] = None
-    ) -> str:
-        """Use the tool asynchronously."""
-        
-        retriever = CustomAzureSearchRetriever(indexes=self.indexes, topK=self.k, score_threshold=self.score_th, rel_threshold=self.rel_th, 
-                                               sas_token=self.sas_token, callback_manager=self.callbacks)
-        # Please note below that running a non-async function like run_agent in a separate thread won't make it truly asynchronous. 
-        # It allows the function to be called without blocking the event loop, but it may still have synchronous behavior internally.
-        loop = asyncio.get_event_loop()
-        results = await loop.run_in_executor(ThreadPoolExecutor(), retriever.invoke, query)
-        
-        return results
 
 #get gpt4
 #Se establecen las herramientas a utilizar. 
@@ -205,10 +164,25 @@ index_format = "{:" + app_settings.custom.index_format + "}"
 indexes=[app_settings.custom.index_root + index_format.format(i) for i in range(1,app_settings.custom.index_number + 1)]
 
 #se establecen las herramientas que el agente utilizará
-tools = [GetDocSearchResults_Tool(indexes=indexes, k=app_settings.datasource.top_k, score_th=app_settings.custom.absolute_threshold, rel_th=app_settings.custom.relative_threshold, sas_token=blob_sas_token)] #tengo mis dudas del uso del sas!
+retriever = GetDocSearchResults(indexes=indexes, k=app_settings.datasource.top_k, score_th=app_settings.custom.absolute_threshold, rel_th=app_settings.custom.relative_threshold, sas_token=blob_sas_token)
 #Definición del LLM a utilizar y vinculación a las herramientas.
 #Los modelos pueden llamar a varias herramientas/funciones. Se pueden llamar a varias funciones simultaneamente. 
 #El modelo elige que función utilizar. Elegirá que indice se utiliza.
+
+from langchain_core.pydantic_v1 import BaseModel, Field
+
+
+class CitedAnswer(BaseModel):
+    """Answer the user question based only on the given sources, and cite the sources used."""
+
+    answer: str = Field(
+        ...,
+        description="The answer to the user question, which is based only on the given sources.",
+    )
+    citations: List[int] = Field(
+        ...,
+        description="The integer IDs of the SPECIFIC sources which justify the answer.",
+    )
 
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 ''' 
@@ -227,24 +201,59 @@ llm = AzureChatOpenAI(deployment_name=gpt_deployment_name,
                       temperature=openai_temperature,
                       max_tokens=COMPLETION_TOKENS, streaming=True)
 
-llm_with_tools = llm.bind_tools(tools) #se vinculan estas herramientas o funciones a las llamadas del modelo.
-                                        #Cada vez qu ese invoque al mokdelo, se tendrá acceso a estas herramientas
+structured_llm = llm.with_structured_output(CitedAnswer, include_raw=True)
+
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+
+system_template = app_settings.azure_openai.system_message + "Cuando en el texto quieras marcar una referencia pon: [docID] reemplazando el ID de la referencia por el número" + "\nAquí están los documentos relevantes:\n{context}"
+
+user_template = "{input}"
+raw_prompt = [
+        ("system", system_template),
+        ("human", user_template),
+        #MessagesPlaceholder(variable_name="agent_scratchpad", optional=True)
+    ]
+prompt = ChatPromptTemplate.from_messages(
+    raw_prompt
+)
 
 roles = {"system":"system",
         "user":"human",
         "assistant":"ai"}
 
+from langchain_core.runnables import RunnablePassthrough
+
+def formatDocs(docs):
+    return "\n**********************************\n".join(f"ID: {i+1}\nUrl: {doc['url']}\nContents: {doc['content']}" for i,doc in enumerate(docs))
+
+retrieve_docs = (lambda x: x["input"]) | retriever
+pre_chain = RunnablePassthrough.assign(context = lambda x: formatDocs(x["context"])) | prompt | structured_llm
+chain = RunnablePassthrough.assign(context = retrieve_docs).assign(answer = pre_chain)
+
 from openai.types.chat import ChatCompletionChunk
 from openai.types.chat.chat_completion_chunk import Choice, ChoiceDelta
 import time
 
+from openai.types.chat import ChatCompletionChunk
+from openai.types.chat.chat_completion_chunk import Choice, ChoiceDelta
+import time
+
+def format_context(cont, id):
+    choices = [Choice(index = 0, finish_reason=None, delta = ChoiceDelta(content = None, role="assistant", context = {"citations": cont, "intent": '[]'}))]
+    return ChatCompletionChunk(id = id, choices = choices, model=gpt_deployment_name, created=int(time.time()), object = "chat.completion.chunk")
 async def convert_to_ChatCompletion(lc_answer):
-    index = 0
-    async for lc in lc_answer:
-        choices = [Choice(index = index, finish_reason=None, delta = ChoiceDelta(content = lc.content, role="assistant"))]
-        index += 1
-        yield ChatCompletionChunk(id = lc.id, choices = choices, model=gpt_deployment_name, created=int(time.time()), object = "chat.completion.chunk")
-            
-async def stream_completions(llm,prompt,question):
-    async for x in convert_to_ChatCompletion(llm.astream(prompt.invoke(question))):
+    id = lc_answer["answer"]["raw"].id
+    yield format_context(lc_answer["context"], id)
+    lc = lc_answer["answer"]["parsed"]
+    choices = [Choice(index = 0, finish_reason=None, delta = ChoiceDelta(content = lc.answer, role="assistant"))]
+    yield ChatCompletionChunk(id = id, choices = choices, model=gpt_deployment_name, created=int(time.time()), object = "chat.completion.chunk")
+
+    for i in lc.citations:
+        choices = [Choice(index = 0, finish_reason=None, delta = ChoiceDelta(content = f"[doc{i+1}]", role=None))]
+        yield ChatCompletionChunk(id = id, choices = choices, model=gpt_deployment_name, created=int(time.time()), object = "chat.completion.chunk")
+    yield ChatCompletionChunk(id = id, choices = [Choice(index=0, finish_reason="stop", delta = ChoiceDelta())], model = gpt_deployment_name, created=int(time.time()), object = "chat.completion.chunk")
+
+
+async def stream_completions(chain,question):
+    async for x in convert_to_ChatCompletion(chain.invoke(dict(input=question))):
         yield x
