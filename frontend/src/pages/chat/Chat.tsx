@@ -1014,10 +1014,13 @@ const Chat = () => {
                   }}
                 />)
                 : (isFeedbackOpen && !isDropDownCompleted) ?
-                (<DropDown categories={["Seleccione aquí su feedback","OK", "OK con matices", "KO", "No Aplica"]} setSelectedCategory={(feedback:string) => {
+                (<Stack horizontal>
+                  <p>Seleccione aquí su feedback: </p>
+                  <DropDown categories={["","OK", "OK con matices", "KO", "No Aplica"]} setSelectedCategory={(feedback:string) => {
                   setCurrentFeedback(feedback)
                   setIsDropDownCompleted(true)
-                }}/>) : isDropDownCompleted ?
+                }}/>
+                </Stack>) : isDropDownCompleted ?
                 <QuestionInput
                   canSendEmpty
                   clearOnSend
