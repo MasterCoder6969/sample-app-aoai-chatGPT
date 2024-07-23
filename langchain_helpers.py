@@ -1,4 +1,4 @@
-import asyncio
+import re
 import json
 import requests
 from typing import Dict, List
@@ -100,9 +100,9 @@ def get_search_results(query: str, indexes: list,
         for result in search_results['value']:
             if result['@search.score'] > score_threshold: # Show results that are at least N% of the max possible score=4
                 content[result['id']]={
-                                        "title": result['title'], 
+                                        "title": result['title'].replace("\n",""), 
                                         "name": result['name'], 
-                                        "content": result['content'],
+                                        "content": re.sub("[\n\s*][\n\s*][\n\s*]+","\n\n",result['content']),
                                         "score": result['@search.score'],
                                         "index": index,
                                         "location": result["filepath"],
@@ -205,18 +205,6 @@ structured_llm = llm.with_structured_output(CitedAnswer, include_raw=True)
 
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
-system_template = app_settings.azure_openai.system_message + "Cuando en el texto quieras marcar una referencia pon: [docID] reemplazando el ID de la referencia por el número" + "\nAquí están los documentos relevantes:\n{context}"
-
-user_template = "{input}"
-raw_prompt = [
-        ("system", system_template),
-        ("human", user_template),
-        #MessagesPlaceholder(variable_name="agent_scratchpad", optional=True)
-    ]
-prompt = ChatPromptTemplate.from_messages(
-    raw_prompt
-)
-
 roles = {"system":"system",
         "user":"human",
         "assistant":"ai"}
@@ -226,9 +214,17 @@ from langchain_core.runnables import RunnablePassthrough
 def formatDocs(docs):
     return "\n**********************************\n".join(f"ID: {i+1}\nUrl: {doc['url']}\nContents: {doc['content']}" for i,doc in enumerate(docs))
 
-retrieve_docs = (lambda x: x["input"]) | retriever
-pre_chain = RunnablePassthrough.assign(context = lambda x: formatDocs(x["context"])) | prompt | structured_llm
-chain = RunnablePassthrough.assign(context = retrieve_docs).assign(answer = pre_chain)
+def create_chain(messages):
+    system_template = app_settings.azure_openai.system_message + "\nCuando en medio del texto quieras poner una referencia (citation) pon: [ID] reemplazando el ID por el de el documento." + "\nAquí están los documentos relevantes:\n{context}"
+    user_template = "{input}"
+    raw_prompt = [("system", system_template)] + \
+                 [(roles[message.get("role")], message.get("content")) for message in messages if message.get("role") in roles] + \
+                 [("human", user_template)]
+    prompt = ChatPromptTemplate.from_messages(raw_prompt)
+    
+    retrieve_docs = (lambda x: x["input"]) | retriever
+    pre_chain = RunnablePassthrough.assign(context = lambda x: formatDocs(x["context"])) | prompt | structured_llm
+    return RunnablePassthrough.assign(context = retrieve_docs).assign(answer = pre_chain)
 
 from openai.types.chat import ChatCompletionChunk
 from openai.types.chat.chat_completion_chunk import Choice, ChoiceDelta
@@ -245,11 +241,11 @@ async def convert_to_ChatCompletion(lc_answer):
     id = lc_answer["answer"]["raw"].id
     yield format_context(lc_answer["context"], id)
     lc = lc_answer["answer"]["parsed"]
-    choices = [Choice(index = 0, finish_reason=None, delta = ChoiceDelta(content = lc.answer, role="assistant"))]
+    choices = [Choice(index = 0, finish_reason=None, delta = ChoiceDelta(content = re.sub(r"\[(\d+)\]",r"[doc\g<1>]",lc.answer), role="assistant"))]
     yield ChatCompletionChunk(id = id, choices = choices, model=gpt_deployment_name, created=int(time.time()), object = "chat.completion.chunk")
 
     for i in lc.citations:
-        choices = [Choice(index = 0, finish_reason=None, delta = ChoiceDelta(content = f"[doc{i+1}]", role=None))]
+        choices = [Choice(index = 0, finish_reason=None, delta = ChoiceDelta(content = f"[doc{i}]", role=None))]
         yield ChatCompletionChunk(id = id, choices = choices, model=gpt_deployment_name, created=int(time.time()), object = "chat.completion.chunk")
     yield ChatCompletionChunk(id = id, choices = [Choice(index=0, finish_reason="stop", delta = ChoiceDelta())], model = gpt_deployment_name, created=int(time.time()), object = "chat.completion.chunk")
 

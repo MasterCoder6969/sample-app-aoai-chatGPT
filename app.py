@@ -40,9 +40,7 @@ from backend.utils import (
     convert_to_pf_format,
     format_pf_non_streaming_response,
 )
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_helpers import chain, roles,stream_completions
-from langchain.agents import create_tool_calling_agent, AgentExecutor
+from langchain_helpers import create_chain,stream_completions
 
 bp = Blueprint("routes", __name__, static_folder="static", template_folder="static")
 
@@ -332,10 +330,10 @@ async def send_chat_request(request_body, request_headers):
     #print(model_args)
 
     try:
-        if app_settings.custom.use_langchain:
+        if  app_settings.custom.use_langchain:
             #agent = create_tool_calling_agent(llm, tools, prompt)
             #agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=False)
-            response = stream_completions(chain, filtered_messages[-1].get("content"))
+            response = stream_completions(create_chain(filtered_messages), filtered_messages[-1].get("content"))
 
             apim_request_id = "" 
         #-------------------------------------------------------------

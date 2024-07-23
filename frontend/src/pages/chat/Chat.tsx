@@ -809,7 +809,7 @@ const Chat = () => {
       ) : (
         <Stack horizontal className={styles.chatRoot}>
           <div className={styles.chatContainer}>
-          {(!messages || messages.length < 1) ? (
+          {((!messages && !oldMessages) || (messages.length < 1 && oldMessages.length < 1)) ? (
                 <Stack className={styles.chatEmptyState}>
                   <img src={ui?.chat_logo ? ui.chat_logo : Contoso} className={styles.chatIcon} aria-hidden="true" />
                   <h1 className={styles.chatEmptyStateTitle}>{ui?.chat_title}</h1>
@@ -828,8 +828,8 @@ const Chat = () => {
                           <Answer
                             answer={{
                               answer: answer.content,
-                              citations: parseCitationFromMessage(messages[index - 1 - oldMessages.length]),
-                              plotly_data: parsePlotFromMessage(messages[index - 1 - oldMessages.length]),
+                              citations: parseCitationFromMessage(oldMessages.concat(messages)[index - 1]),
+                              plotly_data: parsePlotFromMessage(oldMessages.concat(messages)[index - 1]),
                               message_id: answer.id,
                               feedback: answer.feedback,
                               exec_results: execResults
@@ -1008,17 +1008,18 @@ const Chat = () => {
                     setHasCode(true)
                     setOldMessages([...oldMessages, { id: uuid(),
                       role: 'assistant',
-                      content: `SESSIÓN EMPEZADA CON CÓDIGO: ${code}`,
+                      content: `SESIÓN EMPEZADA CON CÓDIGO: ${code}`,
                       date: new Date().toISOString()
                     } as ChatMessage])
                   }}
                 />)
                 : (isFeedbackOpen && !isDropDownCompleted) ?
-                (<DropDown categories={["","OK", "OK con matices", "KO", "No Aplica"]} setSelectedCategory={(feedback:string) => {
+                (<DropDown categories={["Seleccione aquí su feedback","OK", "OK con matices", "KO", "No Aplica"]} setSelectedCategory={(feedback:string) => {
                   setCurrentFeedback(feedback)
                   setIsDropDownCompleted(true)
                 }}/>) : isDropDownCompleted ?
                 <QuestionInput
+                  canSendEmpty
                   clearOnSend
                   buttonTitle='Enviar feedback'
                   placeholder="Escriba aquí su feedback."

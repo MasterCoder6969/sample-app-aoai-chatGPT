@@ -13,13 +13,14 @@ interface Props {
   clearOnSend?: boolean
   conversationId?: string
   buttonTitle?: string
+  canSendEmpty?: boolean
 }
 
-export const QuestionInput = ({ onSend, disabled, placeholder, clearOnSend, conversationId, buttonTitle }: Props) => {
+export const QuestionInput = ({ onSend, disabled, placeholder, clearOnSend, conversationId, buttonTitle, canSendEmpty }: Props) => {
   const [question, setQuestion] = useState<string>('')
 
   const sendQuestion = () => {
-    if (disabled || !question.trim()) {
+    if (disabled || (!canSendEmpty && !question.trim())) {
       return
     }
 
