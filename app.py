@@ -7,6 +7,7 @@ import logging
 import uuid
 import httpx
 import time
+from datetime import date
 from quart import (
     Blueprint,
     Quart,
@@ -51,16 +52,16 @@ def create_app():
     app.secret_key = "e92ged8h28h2hd018db0823db081"
     return app
 
-
 @bp.route("/")
 async def index():
     session["startTime"] = time.time()
+    session["startDate"] = date.today()
+
     return await render_template(
         "index.html",
         title=app_settings.ui.title,
         favicon=app_settings.ui.favicon
     )
-
 
 @bp.route("/favicon.ico")
 async def favicon():
@@ -104,8 +105,6 @@ frontend_settings = {
          "blob_key": app_settings.history.blob_key
     }
 }
-
-FEEDBACK_LOG_PATH = "../feedback.csv"
 
 # Enable Microsoft Defender for Cloud Integration
 MS_DEFENDER_ENABLED = os.environ.get("MS_DEFENDER_ENABLED", "true").lower() == "true"
@@ -339,14 +338,8 @@ async def send_chat_request(request_body, request_headers):
         #-------------------------------------------------------------
         else:
             azure_openai_client = init_openai_client()
-            raw_response = await azure_openai_client.chat.completions.with_raw_response.create(**model_args)
-            response_1 = raw_response.parse()
-            async def generator():
-                async for chunk in response_1:
-                    print(chunk)
-                    yield ChatCompletionChunk(id=chunk.id, choices=chunk.choices, created=chunk.created, model=chunk.model, object="chat.completion.chunk", system_fingerprint=chunk.system_fingerprint)
-            response = generator()
-            apim_request_id = raw_response.headers.get("apim-request-id")
+            response = await azure_openai_client.chat.completions.with_raw_response.create(**model_args)
+            apim_request_id = response.headers.get("apim-request-id")
     except Exception as e:
         logging.exception("Exception in send_chat_request")
         raise e
@@ -412,7 +405,7 @@ def list_to_csv_string(data):
     writer.writerow(data)
     return output.getvalue().strip()
 
-async def update_feedback(code, feedback, messages, time_elapsed):
+async def update_feedback(code, feedback, messages, time_elapsed, given_date):
     container_name = app_settings.history.container
     blob_name = app_settings.history.blob
     account_name = app_settings.history.blob_service
@@ -426,7 +419,7 @@ async def update_feedback(code, feedback, messages, time_elapsed):
     
     try:
         p_messages = [m for m in messages if m and (m[0]!="{")]
-        value_dict = {"Code":code,"Feedback":feedback,"Messages":str(p_messages) , "TimeElapsed": time_elapsed}
+        value_dict = {"Code":code,"Feedback":feedback,"Messages":str(p_messages) , "TimeElapsed": time_elapsed, "Date": str(given_date)}
         data_to_append = "\n" + list_to_csv_string(value_dict.values())
         service = BlobServiceClient.from_connection_string(connection_string)
         with service.get_blob_client(container_name, blob_name) as blob_client:
@@ -437,6 +430,13 @@ async def update_feedback(code, feedback, messages, time_elapsed):
 
     except Exception as e:
         print("Error: " + str(e))
+
+@bp.route("/reset_time", methods=["POST"])
+async def reset():
+    session["startTime"] = time.time()
+    session["startDate"] = date.today()
+    return jsonify({"message":"Successfully resetted time values"}), 200
+
 
 @bp.route("/code", methods=["POST"])
 async def store_code():
@@ -453,7 +453,7 @@ async def update_feedback_aux():
         return jsonify({"error": "request must be json"}), 415
     request_json = await request.get_json()
     feedback = request_json.get("message","")
-    await update_feedback(request_json.get("Code",""), feedback, request_json.get("messages",[]), time.time()-session.get("startTime", None))
+    await update_feedback(request_json.get("Code",""), feedback, request_json.get("messages",[]), time.time()-session.get("startTime", None), session.get("startDate", None))
     return jsonify({"message":"Successfully added feedback: " + feedback}), 200
 
 

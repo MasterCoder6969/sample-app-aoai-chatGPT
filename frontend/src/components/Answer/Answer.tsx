@@ -306,7 +306,7 @@ export const Answer = ({ answer, onCitationClicked, onExectResultClicked }: Prop
                   <Text
                     className={styles.accordionTitle}
                     onClick={toggleIsRefAccordionOpen}
-                    aria-label="Open references"
+                    aria-label="Abrir referencias"
                     tabIndex={0}
                     role="button">
                     <span>
@@ -334,7 +334,7 @@ export const Answer = ({ answer, onCitationClicked, onExectResultClicked }: Prop
                   <Text
                     className={styles.accordionTitle}
                     onClick={() => onExectResultClicked()}
-                    aria-label="Open exec results"
+                    aria-label="Mostrar resultados"
                     tabIndex={0}
                     role="button">
                     <span>

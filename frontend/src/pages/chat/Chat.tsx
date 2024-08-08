@@ -14,6 +14,7 @@ import Contoso from '../../assets/MadridLogo.png'
 import { XSSAllowTags } from '../../constants/xssAllowTags'
 
 import {
+  ResetTime,
   UpdateFeedback,
   StoreCode,
   ChatMessage,
@@ -87,7 +88,7 @@ const Chat = () => {
   const errorDialogContentProps = {
     type: DialogType.close,
     title: errorMsg?.title,
-    closeButtonAriaLabel: 'Close',
+    closeButtonAriaLabel: 'Cerrar',
     subText: errorMsg?.subtitle
   }
 
@@ -567,6 +568,7 @@ const Chat = () => {
         setCurrentFeedback("")
         setIsFeedbackSent(false)
         setIsDropDownCompleted(false)
+        ResetTime()
       }
     }
     setClearingChat(false)
@@ -642,7 +644,7 @@ const Chat = () => {
     setCurrentFeedback("")
     setIsFeedbackSent(false)
     setIsDropDownCompleted(false)
-    
+    ResetTime()
   }
 
   const stopGenerating = () => {
@@ -741,7 +743,9 @@ const Chat = () => {
     if (message?.role && message?.role === 'tool') {
       try {
         const toolMessage = JSON.parse(message.content) as ToolMessageContent
-        return toolMessage.citations
+        return toolMessage.citations.map(c=>{
+          if (c.url) {c.url = decodeURIComponent(c.url)}
+          return c})
       } catch {
         return []
       }
@@ -875,7 +879,7 @@ const Chat = () => {
                     title="Detener la generación"
                     className={styles.stopGeneratingContainer}
                     role="button"
-                    aria-label="Stop generating"
+                    aria-label="Detener la generación"
                     tabIndex={0}
                     onClick={stopGenerating}
                     onKeyDown={e => (e.key === 'Enter' || e.key === ' ' ? stopGenerating() : null)}>
@@ -910,7 +914,7 @@ const Chat = () => {
                         onClick={newChat}
                         disabled={disabledButton()}
                         title="Empezar nueva consulta"
-                        aria-label="start a new chat button"
+                        aria-label="Botón para empezar nuevo chat"
                       />
                     )}
                     <CommandBarButton
@@ -944,9 +948,9 @@ const Chat = () => {
                       }
                       title="Empezar nueva consulta"
                       disabled={disabledButton()}
-                      aria-label="clear chat button"
+                      aria-label="Empezar nueva consults"
                     />
-                    {hasCode && <CommandBarButton
+                    {/*hasCode && <CommandBarButton
                     role="button"
                     styles={isFeedbackOpen ?
                       {
@@ -989,7 +993,7 @@ const Chat = () => {
                     onClick={()=>setIsFeedbackOpen(!isFeedbackOpen)}
                     disabled={false}
                     aria-label="feedback button"
-                  />}
+                  />*/}
                   <Dialog
                     hidden={hideErrorDialog}
                     onDismiss={handleErrorDialogClose}
@@ -1002,6 +1006,7 @@ const Chat = () => {
                   placeholder="Escriba aquí su código."
                   buttonTitle='Confirmar código de consulta'
                   disabled={isLoading}
+                  aria_label="Confirmar código de sesión"
                   onSend={(code) => {
                     setCode(code)
                     StoreCode(code)
@@ -1027,6 +1032,7 @@ const Chat = () => {
                   buttonTitle='Enviar feedback'
                   placeholder="Escriba aquí su feedback."
                   disabled={!isFeedbackOpen || isLoading}
+                  aria_label="Enviar feedback"
                   onSend={(feedback,id) => {
                     setIsFeedbackSent(true)
                     updateFeedback(currentFeedback + "  |  "+feedback,id)
@@ -1051,21 +1057,21 @@ const Chat = () => {
             </Stack>
           </div>
           {/* Citation Panel */}
-          {!isFeedbackOpen && messages && messages.length >0 && isCitationPanelOpen && activeCitation && (
-            <Stack.Item className={styles.citationPanel} tabIndex={0} role="tabpanel" aria-label="Citations Panel">
+          {!isFeedbackOpen && (oldMessages && oldMessages.length >0) && isCitationPanelOpen && activeCitation && (
+            <Stack.Item className={styles.citationPanel} tabIndex={0} role="tabpanel" aria-label="Panel de referencias">
               <Stack
-                aria-label="Citations Panel Header Container"
+                aria-label="Container principal de referencias"
                 horizontal
                 className={styles.citationPanelHeaderContainer}
                 horizontalAlign="space-between"
                 verticalAlign="center">
-                <span aria-label="Citations" className={styles.citationPanelHeader}>
+                <span aria-label="Referencias" className={styles.citationPanelHeader}>
                   Referencias
                 </span>
                 <IconButton
                   title="Cerrar el panel de referencias"
                   iconProps={{ iconName: 'Cancel' }}
-                  aria-label="Close citations panel"
+                  aria-label="Cerrar el panel de referencias"
                   onClick={() => setIsCitationPanelOpen(false)}
                 />
               </Stack>
@@ -1090,7 +1096,7 @@ const Chat = () => {
               </div>
             </Stack.Item>
           )}
-          {!isFeedbackOpen && messages && messages.length > 0 && isIntentsPanelOpen && (
+          {!isFeedbackOpen && oldMessages && oldMessages.length > 0 && isIntentsPanelOpen && (
             <Stack.Item className={styles.citationPanel} tabIndex={0} role="tabpanel" aria-label="Exec Results Panel">
               <Stack
                 aria-label="Intents Panel Header Container"

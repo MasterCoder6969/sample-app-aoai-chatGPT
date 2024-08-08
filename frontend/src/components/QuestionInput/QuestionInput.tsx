@@ -14,11 +14,12 @@ interface Props {
   conversationId?: string
   buttonTitle?: string
   canSendEmpty?: boolean
+  aria_label?: string
 }
 
-export const QuestionInput = ({ onSend, disabled, placeholder, clearOnSend, conversationId, buttonTitle, canSendEmpty }: Props) => {
+export const QuestionInput = ({ onSend, disabled, placeholder, clearOnSend, conversationId, buttonTitle, canSendEmpty, aria_label }: Props) => {
   const [question, setQuestion] = useState<string>('')
-
+   if (!aria_label) {aria_label = "Botón para hazer pregunta"}
   const sendQuestion = () => {
     if (disabled || (!canSendEmpty && !question.trim())) {
       return
@@ -64,7 +65,7 @@ export const QuestionInput = ({ onSend, disabled, placeholder, clearOnSend, conv
         className={styles.questionInputSendButtonContainer}
         role="button"
         tabIndex={0}
-        aria-label="Ask question button"
+        aria-label={aria_label}
         title={buttonTitle}
         onClick={sendQuestion}
         onKeyDown={e => (e.key === 'Enter' || e.key === ' ' ? sendQuestion() : null)}>

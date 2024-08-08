@@ -26,6 +26,15 @@ export async function StoreCode(code:string):Promise<Response>{
   })
   return response
 }
+export async function ResetTime(): Promise<Response> {
+  const response = await fetch("/reset_time",{
+    method: "POST",
+    headers:{
+      "Content-Type": "application/json"
+    }
+  })
+  return response
+}
 export async function UpdateFeedback(feedback:string, messages:string[], code?:string,  abortSignal?: AbortSignal):Promise<Response> {
   const response = await fetch("/feedback", {
     method: 'POST',

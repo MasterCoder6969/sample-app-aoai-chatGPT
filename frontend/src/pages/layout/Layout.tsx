@@ -117,7 +117,7 @@ const Layout = () => {
             className={styles.copyButtonContainer}
             role="button"
             tabIndex={0}
-            aria-label="Copy"
+            aria-label="Copiar"
             onClick={handleCopyClick}
             onKeyDown={e => (e.key === 'Enter' || e.key === ' ' ? handleCopyClick() : null)}>
             <CopyRegular className={styles.copyButton} />
